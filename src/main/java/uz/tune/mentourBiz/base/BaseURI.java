@@ -103,4 +103,5 @@ public interface BaseURI {
     String NAME = "/name";
     String SPEAKING = "/speaking";
     String EVALUATE = "/evaluate";
+    String DEMO_ATTENDANCE = "/demo-attendance";
 }
