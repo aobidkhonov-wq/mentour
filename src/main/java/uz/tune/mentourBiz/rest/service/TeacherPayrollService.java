@@ -267,14 +267,19 @@ public class TeacherPayrollService {
         LocalDate first = ym.atDay(1);
         Instant from = first.atStartOfDay(UZ_ZONE).toInstant();
         Instant toExclusive = first.plusMonths(1).atStartOfDay(UZ_ZONE).toInstant();
-     Instant lessonsToExclusive = min(toExclusive, Instant.now());
+        // Lesson counts cover the whole month, lessons still to come included. They used to stop at
+        // "now", which made totalLessons a running tally rather than the month's lesson plan: it grew
+        // with every day taught, so lessonShare and the per-student denominator both moved underneath
+        // the salary all month. Over a full month the two windows agree; the difference only shows on
+        // a month still in progress, where the per-student fee now fills in as the lessons are held
+        // instead of being paid in full from the first week.
 
      Map<UUID, Group> groupById = new LinkedHashMap<>();
         for (Group g : groupRepository.findAllByTeacher_User_Uuid(teacherUuid)) {
             groupById.put(g.getUuid(), g);
         }
         List<UUID> conductedGroupUuids =
-                courseLessonRepo.findGroupsConductedByTeacher(teacherUuid, from, lessonsToExclusive);
+                courseLessonRepo.findGroupsConductedByTeacher(teacherUuid, from, toExclusive);
         List<UUID> missing = conductedGroupUuids.stream().filter(id -> !groupById.containsKey(id)).toList();
         if (!missing.isEmpty()) {
             groupRepository.findAllByUuidIn(missing).forEach(g -> groupById.put(g.getUuid(), g));
@@ -287,14 +292,14 @@ public class TeacherPayrollService {
 
 
         Map<UUID, Long> totalLessonsByGroup = relevantGroupUuids.isEmpty() ? Map.of()
-                : toMap(courseLessonRepo.countLessonsByGroup(relevantGroupUuids, from, lessonsToExclusive));
+                : toMap(courseLessonRepo.countLessonsByGroup(relevantGroupUuids, from, toExclusive));
         Map<UUID, Long> teacherLessonsByGroup = relevantGroupUuids.isEmpty() ? Map.of()
                 : toMap(courseLessonRepo.countLessonsByGroupForTeacher(
-                        relevantGroupUuids, teacherUuid, from, lessonsToExclusive));
+                        relevantGroupUuids, teacherUuid, from, toExclusive));
 
         Map<UUID, Long> attendanceUnitsByGroup = relevantGroupUuids.isEmpty() ? Map.of()
                 : toMap(attendanceRecordRepository.countAttendanceByGroupForTeacher(
-                        relevantGroupUuids, teacherUuid, ATTENDANCE_EARNING_STATUSES, from, lessonsToExclusive));
+                        relevantGroupUuids, teacherUuid, ATTENDANCE_EARNING_STATUSES, from, toExclusive));
 
 
         Optional<TeacherSalaryPlan> planOpt = salaryPlanRepository.findByTeacher_User_Uuid(teacherUuid);
@@ -561,10 +566,6 @@ public class TeacherPayrollService {
     private static String teacherName(Teacher teacher) {
         return teacher.getUser() != null
                 ? (teacher.getUser().getFirstName() + " " + teacher.getUser().getLastName()) : null;
-    }
-
-    private static Instant min(Instant a, Instant b) {
-        return a.isBefore(b) ? a : b;
     }
 
     private static Map<UUID, Long> toMap(List<Object[]> rows) {

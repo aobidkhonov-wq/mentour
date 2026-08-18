@@ -7,6 +7,7 @@ import uz.tune.mentourBiz.rest.enums.AttendanceStatus;
 import uz.tune.mentourBiz.rest.enums.LessonStatus;
 import uz.tune.mentourBiz.rest.enums.LessonType;
 import uz.tune.mentourBiz.rest.enums.UnitStatus;
+import uz.tune.mentourBiz.rest.domain.userManagement.user.User;
 import uz.tune.mentourBiz.rest.payload.res.lesson.ResUnit;
 import uz.tune.mentourBiz.utils.DateUtils;
 
@@ -31,6 +32,9 @@ public class ResLessonDetail {
 //    private String link;
     private LessonType lessonType;
     private AttendanceStatus attendanceStatus;
+    // Full name of the teacher who actually conducted the lesson instead of the group's regular
+    // teacher; null when nobody substituted.
+    private String substituteTeacher;
     // units
     private List<ResUnit> units;
 
@@ -51,6 +55,10 @@ public class ResLessonDetail {
         this.startTimeLocal = DateUtils.schoolTime(lesson.getStartTime(), utcOffset);
         this.endTimeLocal = DateUtils.schoolTime(lesson.getEndTime(), utcOffset);
         this.lessonType = lesson.getLessonType();
+        if (lesson.getConductedByTeacher() != null && lesson.getConductedByTeacher().getUser() != null) {
+            User substitute = lesson.getConductedByTeacher().getUser();
+            this.substituteTeacher = substitute.getFirstName() + " " + substitute.getLastName();
+        }
         if (lesson.getUnits() != null && !lesson.getUnits().isEmpty()) {
             this.units = lesson.getUnits().stream()
                     .filter(u -> u.getStatus() == UnitStatus.ACTIVE)

@@ -114,7 +114,7 @@ public interface CourseLessonRepo extends BaseRepository<CourseLesson> {
     // course is finalized, so a lesson that has already been taught normally still carries the status it
     // was created with (STUDENT_APP) — filtering on FINISHED alone reports zero lessons for every group
     // of a running course. Every status except DELETED is therefore in scope, and the caller's
-    // toExclusive is what keeps lessons that have not happened yet out of the count.
+    // from/toExclusive are what confine the count to one month.
     //
     // The course has to be checked too, not just the lesson: deleting a course leaves its lessons with
     // their original status, so they went on being counted. That inflated totalLessons — the denominator
@@ -150,7 +150,8 @@ public interface CourseLessonRepo extends BaseRepository<CourseLesson> {
             @Param("toExclusive") Instant toExclusive);
 
     /**
-     * Count of conducted lessons per group in the period. Row: [groupUuid (UUID), count (Long)].
+     * Count of the group's lessons in the period, whether or not they have been held yet — this is the
+     * month's lesson plan, the denominator payroll prorates by. Row: [groupUuid (UUID), count (Long)].
      */
     @Query("""
         SELECT g.uuid, COUNT(l) FROM CourseLesson l
@@ -168,9 +169,8 @@ public interface CourseLessonRepo extends BaseRepository<CourseLesson> {
             @Param("toExclusive") Instant toExclusive);
 
     /**
-     * Count of conducted lessons per group that were effectively conducted by the given teacher
-     * (explicit substitute, or the group's default teacher when no substitute is set) in the period.
-     * Row: [groupUuid (UUID), count (Long)].
+     * Same count, narrowed to the lessons this teacher is the conductor of (explicit substitute, or the
+     * group's default teacher when no substitute is set). Row: [groupUuid (UUID), count (Long)].
      */
     @Query("""
         SELECT g.uuid, COUNT(l) FROM CourseLesson l
