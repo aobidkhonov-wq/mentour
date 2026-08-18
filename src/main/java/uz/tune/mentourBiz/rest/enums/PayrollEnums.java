@@ -5,11 +5,16 @@ public class PayrollEnums {
 
     /**
      * Life cycle of a teacher's monthly payslip. A payslip is generated as DRAFT, sent for review as
-     * PENDING, signed off as APPROVED and finally recorded as PAID. Its figures stop being recomputed
-     * once it is approved, so an old month never changes under the school's feet.
+     * PENDING and signed off as APPROVED. Its figures stop being recomputed once it is approved, so an
+     * old month never changes under the school's feet.
+     *
+     * <p>From APPROVED onwards the status is driven by money rather than by a button: approving credits
+     * the net pay to the teacher's balance, and every payment made against that balance is allocated
+     * back to the oldest open payslip. A payslip becomes PARTIALLY_PAID as soon as part of it has been
+     * settled and PAID only when nothing is left outstanding.
      */
     public enum PayslipStatus {
-        DRAFT, PENDING, APPROVED, PAID, CANCELLED
+        DRAFT, PENDING, APPROVED, PARTIALLY_PAID, PAID, CANCELLED
     }
 
     /** What a row in the payroll history log represents. */
@@ -56,5 +61,29 @@ public class PayrollEnums {
         PER_COMPLETED_LESSON,
         PER_SCHEDULED_LESSON,
         PER_ATTENDED_STUDENT
+    }
+
+    /**
+     * What moved a teacher's balance. The balance is the running sum of these entries and never resets
+     * at a month boundary — an unpaid remainder simply stays on the ledger into the next month.
+     */
+    public enum BalanceEntryType {
+        // A payslip was approved: its net pay becomes money the school owes.
+        ACCRUAL,
+        // Money handed over, whether as an advance or as the final settlement. Always negative.
+        PAYMENT,
+        // An approval taken back before any of it was paid, cancelling out its ACCRUAL.
+        REVERSAL
+    }
+
+    /**
+     * How a teacher payment was meant. Both types work the same way — they draw down the balance and
+     * settle the oldest open payslip first; the distinction is purely for reporting.
+     */
+    public enum TeacherPaymentType {
+        // Paid before the month's pay run is settled.
+        ADVANCE,
+        // The regular payout.
+        SALARY
     }
 }

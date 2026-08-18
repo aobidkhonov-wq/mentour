@@ -2,7 +2,9 @@ package uz.tune.mentourBiz.rest.repository.user;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -77,4 +79,13 @@ public interface TeacherRepository extends BaseRepository<Teacher> {
     ORDER BY AVG(up.progressPercentage) DESC
     """)
     List<Object[]> findTopTeachersBySchool(@Param("schoolUuid") UUID schoolUuid, Pageable pageable);
+
+    /**
+     * Locks the teacher row for the duration of the transaction. Paying reads the balance, checks the
+     * amount against it and writes the payment; two admins paying the same teacher at the same moment
+     * would otherwise both pass the check against the same balance and overdraw it between them.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM Teacher t WHERE t.user.uuid = :uuid")
+    Optional<Teacher> findByUserUuidForUpdate(@Param("uuid") UUID uuid);
 }

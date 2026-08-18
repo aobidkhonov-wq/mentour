@@ -89,4 +89,32 @@ public interface TeacherPayslipRepository extends BaseRepository<TeacherPayslip>
             @Param("year") Integer year,
             @Param("month") Integer month,
             @Param("schoolUuids") Collection<UUID> schoolUuids);
+
+    /**
+     * The teacher's payslips that still owe money, oldest period first — the order a payment is
+     * allocated in, so a remainder carried over from an earlier month is always cleared before the
+     * current one.
+     */
+    @EntityGraph(attributePaths = {"teacher", "teacher.user"})
+    @Query("""
+        SELECT p FROM TeacherPayslip p
+        WHERE p.teacher.user.uuid = :teacherUuid
+          AND p.status IN (uz.tune.mentourBiz.rest.enums.PayrollEnums.PayslipStatus.APPROVED,
+                           uz.tune.mentourBiz.rest.enums.PayrollEnums.PayslipStatus.PARTIALLY_PAID)
+        ORDER BY p.periodYear ASC, p.periodMonth ASC, p.id ASC
+    """)
+    List<TeacherPayslip> findOpenForTeacher(@Param("teacherUuid") UUID teacherUuid);
+
+    /** How many months are still owing per teacher, for the balances list. Row: [teacherUuid, count]. */
+    @Query("""
+        SELECT tu.uuid, COUNT(p)
+        FROM TeacherPayslip p
+        JOIN p.teacher t
+        JOIN t.user tu
+        WHERE tu.uuid IN :teacherUuids
+          AND p.status IN (uz.tune.mentourBiz.rest.enums.PayrollEnums.PayslipStatus.APPROVED,
+                           uz.tune.mentourBiz.rest.enums.PayrollEnums.PayslipStatus.PARTIALLY_PAID)
+        GROUP BY tu.uuid
+    """)
+    List<Object[]> countOpenByTeacher(@Param("teacherUuids") Collection<UUID> teacherUuids);
 }

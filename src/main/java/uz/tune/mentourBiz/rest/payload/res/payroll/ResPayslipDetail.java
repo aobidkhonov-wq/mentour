@@ -52,6 +52,16 @@ public class ResPayslipDetail {
     // Net pay spelled out for the payslip, e.g. "Two million seven hundred sixty thousand sum only".
     private String netPayInWords;
 
+    // ---- Settlement ----
+    // Paid out of the teacher's balance so far, and what this month still owes. Advances show up here,
+    // never among the deductions: an advance is pay handed over early, not pay the teacher did not earn.
+    private Long paidAmount;
+    private Long remainingAmount;
+
+    // The teacher's whole balance, this month included — what the school owes them across every open
+    // month, since an unpaid remainder carries over rather than being written off.
+    private Long teacherBalance;
+
     // ---- Lessons tab: the per-group breakdown the amounts came from ----
     private List<ResTeacherGroupPayroll> groups;
 

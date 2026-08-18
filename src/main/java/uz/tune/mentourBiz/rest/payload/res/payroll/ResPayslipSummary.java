@@ -30,5 +30,10 @@ public class ResPayslipSummary {
     private Long totalPay;
     private Long netPay;
 
+    // How much of netPay has actually been handed over, and what is left. Both are 0 until the
+    // payslip is approved: approving is what puts the money on the teacher's balance to be drawn from.
+    private Long paidAmount;
+    private Long remainingAmount;
+
     private PayrollEnums.PayslipStatus status;
 }

@@ -96,7 +96,7 @@ public class OverviewServiceImpl {
                             l.getUnits().stream().max(Comparator.comparing(Unit::getSortOrder)).map(Unit::getTitle).orElse(null);
 
                     return new ResOverviewLesson(
-                            l.getUuid(), l.getName(), teacherFullName, l.getCourse().getGroup().getName(),
+                            l.getUuid(), l.getName(), teacherFullName, l.getCourse().getGroup(),
                             (int) count, l.getStartTime(), l.getEndTime(), l.getStatus(), latestUnitTitle,school
                     );
                 })

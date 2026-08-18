@@ -2,6 +2,7 @@ package uz.tune.mentourBiz.rest.payload;
 
 import lombok.Data;
 import uz.tune.mentourBiz.rest.domain.schoolManagement.school.School;
+import uz.tune.mentourBiz.rest.domain.schoolManagement.school.group.Group;
 import uz.tune.mentourBiz.rest.enums.LessonStatus;
 import uz.tune.mentourBiz.utils.DateUtils;
 
@@ -23,14 +24,15 @@ public class ResOverviewLesson {
     private String endTimeLocal;
     private LessonStatus status;
     private String currentUnit;
+    private UUID groupUuid;
 
-    public ResOverviewLesson(UUID lessonId, String lessonName, String teacherName, String groupName,
+    public ResOverviewLesson(UUID lessonId, String lessonName, String teacherName, Group group,
                              Integer studentCount, Instant startTime, Instant endTime,
                              LessonStatus status, String currentUnit, School school) {
         this.lessonId = lessonId;
         this.lessonName = lessonName;
         this.teacherName = teacherName;
-        this.groupName = groupName;
+        this.groupName = group.getName();
         this.studentCount = studentCount;
         this.startTime = startTime.plusSeconds(school.getUtcOffset() * 3600L);
         this.endTime = endTime.plusSeconds(school.getUtcOffset() * 3600L);
@@ -39,5 +41,6 @@ public class ResOverviewLesson {
         this.endTimeLocal = DateUtils.schoolTime(endTime, school.getUtcOffset());
         this.status = LessonStatus.effective(status, endTime);
         this.currentUnit = currentUnit;
+        this.groupUuid = group.getUuid();
     }
 }

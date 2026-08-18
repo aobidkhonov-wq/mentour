@@ -16,6 +16,7 @@ import uz.tune.mentourBiz.rest.enums.PayrollEnums;
 import uz.tune.mentourBiz.rest.enums.UserStatus;
 import uz.tune.mentourBiz.rest.payload.req.payroll.ReqGeneratePayslips;
 import uz.tune.mentourBiz.rest.payload.req.payroll.ReqPayslipPayment;
+import uz.tune.mentourBiz.rest.payload.req.payroll.ReqTeacherPayment;
 import uz.tune.mentourBiz.rest.payload.res.ResponseMessage;
 import uz.tune.mentourBiz.rest.payload.res.payroll.ResPayrollEvent;
 import uz.tune.mentourBiz.rest.payload.res.payroll.ResPayrollOverview;
@@ -58,6 +59,7 @@ public class TeacherPayslipService {
     private final TeacherSalaryPlanRepository teacherSalaryPlanRepository;
     private final TeacherRepository teacherRepository;
     private final TeacherPayrollService teacherPayrollService;
+    private final TeacherBalanceService balanceService;
     private final UserScopeService userScopeService;
     private final UserService userService;
 
@@ -76,7 +78,10 @@ public class TeacherPayslipService {
         long total = payslips.stream().mapToLong(p -> nz(p.getNetPay())).sum();
         long previousTotal = previousPayslips.stream().mapToLong(p -> nz(p.getNetPay())).sum();
 
-        long paid = sumWhere(payslips, PayrollEnums.PayslipStatus.PAID);
+        // Actual money out, not the face value of the payslips flagged PAID: a month that has had one
+        // advance against it is neither fully paid nor unpaid, and the card has to say so.
+        long paid = balanceService.paidAmountsOf(uuidsOf(payslips)).values().stream()
+                .mapToLong(Long::longValue).sum();
         long pending = sumWhere(payslips, PayrollEnums.PayslipStatus.PENDING);
         long paidTeachers = payslips.stream()
                 .filter(p -> p.getStatus() == PayrollEnums.PayslipStatus.PAID).count();
@@ -104,10 +109,11 @@ public class TeacherPayslipService {
     public Page<ResPayslipSummary> list(Integer year, Integer month, PayrollEnums.PayslipStatus status,
                                         String search, Pageable pageable) {
         YearMonth ym = resolvePeriod(year, month);
-        return payslipRepository.findForPeriod(
-                        ym.getYear(), ym.getMonthValue(), userScopeService.getAuthorizedSchoolUuids(),
-                        status, blankToNull(search), pageable)
-                .map(TeacherPayslipService::toSummary);
+        Page<TeacherPayslip> page = payslipRepository.findForPeriod(
+                ym.getYear(), ym.getMonthValue(), userScopeService.getAuthorizedSchoolUuids(),
+                status, blankToNull(search), pageable);
+        Map<UUID, Long> paidAmounts = balanceService.paidAmountsOf(uuidsOf(page.getContent()));
+        return page.map(payslip -> toSummary(payslip, paidAmounts.getOrDefault(payslip.getUuid(), 0L)));
     }
 
     /**
@@ -373,7 +379,11 @@ public class TeacherPayslipService {
         return toDetail(payslipRepository.save(payslip));
     }
 
-    /** Sign off the figures. From here on they are frozen. */
+    /**
+     * Sign off the figures. From here on they are frozen — and the net pay stops being a calculation
+     * and becomes money the school owes: approving credits it to the teacher's balance, which is what
+     * an advance is later drawn from.
+     */
     @Transactional
     public ResPayslipDetail approve(UUID payslipUuid) {
         TeacherPayslip payslip = loadInScope(payslipUuid);
@@ -384,33 +394,62 @@ public class TeacherPayslipService {
         payslip.setStatus(PayrollEnums.PayslipStatus.APPROVED);
         payslip.setApprovedBy(userService.getCurrentUser());
         payslip.setApprovedAt(Instant.now());
+        // Saved first: the ledger entry points at the payslip and needs its id on a first approval.
+        payslip = payslipRepository.save(payslip);
+        balanceService.accrueOnApproval(payslip);
         return toDetail(payslipRepository.save(payslip));
     }
 
-    /** Record that the money has gone out. */
+    /**
+     * Settle this month in full. A shortcut for the common case — the general way to pay a teacher is
+     * {@code POST /payroll/balances/{teacherUuid}/payments}, which comes off the balance and clears the
+     * oldest month first. Here the money lands on the month the admin is looking at instead.
+     *
+     * <p>The status is not set directly any more: it follows from how much of the net pay has been
+     * settled, so a month with one advance against it reads PARTIALLY_PAID rather than PAID.
+     */
     @Transactional
     public ResPayslipDetail markPaid(UUID payslipUuid, ReqPayslipPayment req) {
         TeacherPayslip payslip = loadInScope(payslipUuid);
-        if (payslip.getStatus() != PayrollEnums.PayslipStatus.APPROVED) {
-            throw new ValidationException("A payslip must be approved before it can be marked paid.");
+        if (payslip.getStatus() != PayrollEnums.PayslipStatus.APPROVED
+                && payslip.getStatus() != PayrollEnums.PayslipStatus.PARTIALLY_PAID) {
+            throw new ValidationException("A payslip must be approved before it can be paid.");
         }
-        payslip.setStatus(PayrollEnums.PayslipStatus.PAID);
+
+        ReqTeacherPayment payment = new ReqTeacherPayment();
+        payment.setType(PayrollEnums.TeacherPaymentType.SALARY);
+        payment.setPayFullBalance(Boolean.TRUE);
+        payment.setMethod(req != null ? req.getPaymentMethod() : null);
+        payment.setPaymentDate(req != null ? req.getPaymentDate() : null);
+        payment.setNote(req != null ? req.getNote() : null);
+
+        balanceService.payPayslip(payslip, payment);
+
         payslip.setPaymentMethod(req != null ? req.getPaymentMethod() : null);
-        payslip.setPaymentDate(req != null && req.getPaymentDate() != null
-                ? req.getPaymentDate() : LocalDate.now(UZ_ZONE));
+        // Settling stamps the payslip with today; an admin recording a payment made last Friday said so
+        // in the request, and that is the date the payslip should carry.
+        if (req != null && req.getPaymentDate() != null) payslip.setPaymentDate(req.getPaymentDate());
         if (req != null && req.getNote() != null) payslip.setNote(req.getNote());
-        payslip.setPaidBy(userService.getCurrentUser());
-        payslip.setPaidAt(Instant.now());
         return toDetail(payslipRepository.save(payslip));
     }
 
-    /** Send an approved payslip back to draft, e.g. when a mistake is spotted before payment. */
+    /**
+     * Send an approved payslip back to draft, e.g. when a mistake is spotted before payment. The
+     * approval is withdrawn from the balance at the same time.
+     *
+     * <p>Refused once any of the month has been handed over. Reopening would let the figures be
+     * recalculated under money that has already left the building, and the balance would end up
+     * disagreeing with what the teacher was actually given — reverse the payment first.
+     */
     @Transactional
     public ResPayslipDetail reopen(UUID payslipUuid) {
         TeacherPayslip payslip = loadInScope(payslipUuid);
-        if (payslip.getStatus() == PayrollEnums.PayslipStatus.PAID) {
-            throw new ValidationException("A paid payslip cannot be reopened; cancel it and issue a correction.");
+        if (payslip.getStatus() == PayrollEnums.PayslipStatus.PAID
+                || payslip.getStatus() == PayrollEnums.PayslipStatus.PARTIALLY_PAID) {
+            throw new ValidationException(
+                    "This payslip has already been paid against; reverse the payment before reopening it.");
         }
+        balanceService.reverseAccrual(payslip);
         payslip.setStatus(PayrollEnums.PayslipStatus.DRAFT);
         payslip.setApprovedBy(null);
         payslip.setApprovedAt(null);
@@ -471,7 +510,7 @@ public class TeacherPayslipService {
                 .sum();
     }
 
-    private static ResPayslipSummary toSummary(TeacherPayslip payslip) {
+    private static ResPayslipSummary toSummary(TeacherPayslip payslip, long paidAmount) {
         return ResPayslipSummary.builder()
                 .uuid(payslip.getUuid())
                 .teacherUuid(teacherUuid(payslip))
@@ -481,6 +520,8 @@ public class TeacherPayslipService {
                 .periodEnd(payslip.getPeriodEnd())
                 .totalPay(nz(payslip.getTotalEarnings()))
                 .netPay(nz(payslip.getNetPay()))
+                .paidAmount(paidAmount)
+                .remainingAmount(Math.max(0, nz(payslip.getNetPay()) - paidAmount))
                 .status(payslip.getStatus())
                 .build();
     }
@@ -536,6 +577,10 @@ public class TeacherPayslipService {
         String planName = payslip.getSalaryPlan() != null ? payslip.getSalaryPlan().getName() : null;
         String name = teacherName(payslip);
 
+        long paidAmount = balanceService.paidAmountOf(payslip.getUuid());
+        long remainingAmount = Math.max(0, nz(payslip.getNetPay()) - paidAmount);
+        Long teacherBalance = teacherUuid != null ? balanceService.balanceOf(teacherUuid) : null;
+
         return ResPayslipDetail.builder()
                 .uuid(payslip.getUuid())
                 .teacherUuid(teacherUuid)
@@ -556,6 +601,9 @@ public class TeacherPayslipService {
                 .totalDeductions(nz(payslip.getTotalDeductions()))
                 .netPay(nz(payslip.getNetPay()))
                 .netPayInWords(NumberToWords.spell(nz(payslip.getNetPay()), CURRENCY_WORD))
+                .paidAmount(paidAmount)
+                .remainingAmount(remainingAmount)
+                .teacherBalance(teacherBalance)
                 .groups(groups)
                 .bonuses(mapEvents(events, PayrollEnums.PayrollEventType.BONUS))
                 .adjustments(mapEvents(events, PayrollEnums.PayrollEventType.ADJUSTMENT))
@@ -592,6 +640,10 @@ public class TeacherPayslipService {
 
     private static long sumWhere(List<TeacherPayslip> payslips, PayrollEnums.PayslipStatus status) {
         return payslips.stream().filter(p -> p.getStatus() == status).mapToLong(p -> nz(p.getNetPay())).sum();
+    }
+
+    private static List<UUID> uuidsOf(List<TeacherPayslip> payslips) {
+        return payslips.stream().map(TeacherPayslip::getUuid).toList();
     }
 
     private static Double share(long part, long total) {
