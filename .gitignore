@@ -1,0 +1,52 @@
+### Build ###
+HELP.md
+target/
+build/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### Eclipse / STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+### OS / Office temp ###
+.DS_Store
+Thumbs.db
+~$*
+
+### Local artifacts ###
+.bat
+tmp/
+dump/
+*.log
+
+### Secrets — HECH QACHON commit qilinmaydi ###
+src/main/resources/application.yml
+src/main/resources/application-local.yml
+src/main/resources/application-prod.yml
+src/main/resources/application-test.yml
+!src/main/resources/*.yml.example

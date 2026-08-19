@@ -1,0 +1,9 @@
+package uz.tune.mentourBiz.rest.payload.questionFormats.types.answers.typesOfAnswes;
+
+import lombok.Data;
+import uz.tune.mentourBiz.rest.payload.questionFormats.types.answers.AnswerKey;
+
+@Data
+public class FixingKey extends AnswerKey {
+    private String correctText;
+}

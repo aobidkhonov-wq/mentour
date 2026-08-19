@@ -1,0 +1,94 @@
+Ubuntu 22.04 64b (8cpu, 16gb RAM, 50gb disk (500gb if video recordings))
+external ip of server
+
+
+sudo apt-get update
+sudo apt-get install -y language-pack-en
+sudo update-locale LANG=en_US.UTF-8
+sudo systemctl set-environment LANG=en_US.UTF-8
+exit <- locale changes upd 
+
+// Firewall:
+sudo ufw allow 22/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 16384:32768/udp
+sudo ufw enable
+
+
+wget -qO- https://raw.githubusercontent.com/bigbluebutton/bbb-install/v3.0.x-release/bbb-install.sh | sudo bash -s -- -w -v jammy-300 -s meet.mentour.uz -e jonsonprofi@gmail.com
+
+sudo bbb-conf --status
+sudo bbb-conf --check
+sudo bbb-conf --secret
+
+||
+PDF BACKGROUND CHANGE 
+
+sudo cp ~/background.pdf /var/www/bigbluebutton-default/assets/default.pdf
+sudo chown root:root /var/www/bigbluebutton-default/assets/default.pdf
+sudo chmod 644 /var/www/bigbluebutton-default/assets/default.pdf
+
+sudo nano /etc/bigbluebutton/bbb-web.properties
+
+beans.presentationService.defaultUploadedPresentation=${bigbluebutton.web.serverURL}/default.pdf
+
+beans.presentationService.defaultUploadedPresentation=${bigbluebutton.web.serverURL}/assets/default.pdf
+
+sudo bbb-conf --restart
+
+
+||
+WELCOME PAGE REPLACEMENT
+
+Backup 
+
+sudo cp /var/www/bigbluebutton-default/assets/index.html /var/www/bigbluebutton-default/assets/index.html.bak
+
+Edit 
+sudo nano /var/www/bigbluebutton-default/assets/index.html
+
+Inside
+<h1 id="welcome-message">Welcome to Mentour Uz!</h1>
+
+sudo bbb-conf --restart
+sudo systemctl reload nginx || sudo systemctl restart nginx
+
+||
+
+ICO CHANGES: Group.ico
+
+
+sudo mkdir -p /var/www/bigbluebutton-default/site
+sudo cp ~/Group.ico /var/www/bigbluebutton-default/site/favicon.ico
+sudo chown root:root /var/www/bigbluebutton-default/site/favicon.ico
+sudo chmod 644 /var/www/bigbluebutton-default/site/favicon.ico
+
+
+sudo tee /etc/bigbluebutton/nginx/favicon.nginx > /dev/null <<'EOF'
+location = /favicon.ico {
+    alias /var/www/bigbluebutton-default/site/favicon.ico;
+    access_log off;
+    log_not_found off;
+}
+EOF
+	
+
+sudo bbb-conf --restart
+sudo systemctl reload nginx || sudo systemctl restart nginx
+
+||
+BBB -> Mentour Uz
+
+
+grep -i "BigBlueButton" /usr/share/bbb-web/WEB-INF/classes/bigbluebutton.properties -> change the welcome pop up when lesson starts 
+grep -i "BigBlueButton" /usr/share/bigbluebutton/html5-client/locales/en.json -> change the setting part 
+sudo sed -i 's/BigBlueButton/MetnourUz/g' /usr/share/bigbluebutton/html5-client/locales/en.json
+
+
+||
+TO REDIRECT 
+sudo nano /etc/bigbluebutton/bbb-web.properties
+bigbluebutton.web.logoutURL=https://app-biz.mentour.uz/
+
+

@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: mentour-biz
+  profiles:
+    active: local   # local | test | prod
