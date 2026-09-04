@@ -51,5 +51,5 @@ docker run -p 8888:8888 -v /var/www/mentour:/var/www/mentour mentour-biz
 
 ## Branches
 
-- `main` — production
+- `new-prod` — production
 - `dev` — development
